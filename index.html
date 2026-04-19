@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Resource Portal</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { background-color: #0B0B0C; color: #F3F4F6; font-family: 'Inter', sans-serif; }
+        .card { background-color: #121214; border: 1px solid #232329; transition: all 0.2s; }
+        .card:hover { border-color: #60A5FA; }
+        .btn-success { background-color: #22C55E; }
+        .btn-danger { background-color: #EF4444; }
+        .text-warning { color: #F59E0B; }
+        .tab-active { color: #60A5FA; border-bottom: 2px solid #60A5FA; }
+    </style>
+</head>
+<body class="p-4">
+
+<div class="max-w-6xl mx-auto">
+    <header class="flex justify-between items-center mb-8 py-4 border-b border-[#232329]">
+        <div>
+            <h1 class="text-2xl font-bold tracking-tight">СКЛАД РЕСУРСОВ</h1>
+            <p id="stats" class="text-[#A1A1AA] text-sm">Загрузка статистики...</p>
+        </div>
+        <button onclick="toggleRole()" id="role-btn" class="bg-[#18181B] border border-[#232329] px-4 py-2 rounded-lg text-sm font-semibold">
+            Режим: <span class="text-[#22C55E]" id="role-text">Админ</span>
+        </button>
+    </header>
+
+    <nav class="flex gap-6 mb-8 text-[#A1A1AA] overflow-x-auto pb-2">
+        <button onclick="setCategory('all')" class="tab-btn tab-active whitespace-nowrap">Все</button>
+        <button onclick="setCategory('shells')" class="tab-btn whitespace-nowrap">Ракушки</button>
+        <button onclick="setCategory('feathers')" class="tab-btn whitespace-nowrap">Перья</button>
+        <button onclick="setCategory('pets')" class="tab-btn whitespace-nowrap">Домашние</button>
+        <button onclick="setCategory('meds')" class="tab-btn whitespace-nowrap">Целебные</button>
+    </nav>
+
+    <div id="inventory-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        </div>
+</div>
+
+<script>
+    // 1. Конфигурация (ВСТАВЬТЕ СВОИ ДАННЫЕ)
+    const SB_URL = 'ВАШ_SUPABASE_URL';
+    const SB_KEY = 'ВАШ_SUPABASE_ANON_KEY';
+    const supabaseClient = supabase.createClient(SB_URL, SB_KEY);
+
+    let currentCategory = 'all';
+    let isAdmin = true;
+
+    // 2. Инициализация
+    async function init() {
+        await checkRottenItems(); // Проверка гниения
+        await loadResources();
+    }
+
+    // 3. Логика гниения (4 суток)
+    async function checkRottenItems() {
+        const fourDaysAgo = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
+        
+        // Находим записи, созданные более 4 дней назад, которые еще не помечены как сгнившие
+        const { data: rotten } = await supabaseClient
+            .from('expiring_items')
+            .select('id, resource_id')
+            .lt('created_at', fourDaysAgo)
+            .eq('is_rotten', false);
+
+        if (rotten && rotten.length > 0) {
+            for (let item of rotten) {
+                // Уменьшаем общее количество в таблице ресурсов
+                await supabaseClient.rpc('update_resource_safe', { res_id: item.resource_id, delta: -1 });
+                // Помечаем как сгнившее
+                await supabaseClient.from('expiring_items').update({ is_rotten: true }).eq('id', item.id);
+            }
+        }
+    }
+
+    // 4. Загрузка данных
+    async function loadResources() {
+        let query = supabaseClient.from('resources').select('*');
+        if (currentCategory !== 'all') query = query.eq('category', currentCategory);
+        
+        const { data, error } = await query.order('id', { ascending: true });
+        if (data) render(data);
+    }
+
+    // 5. Функция Крафта / Сдачи
+    async function handleAction(item, type) {
+        if (!isAdmin) return;
+
+        if (type === 'add') {
+            await supabaseClient.rpc('update_resource_safe', { res_id: item.id, delta: 1 });
+            // Если это лечилка, добавляем запись в таблицу гниения
+            if (item.category === 'meds') {
+                await supabaseClient.from('expiring_items').insert({ resource_id: item.id });
+            }
+        } else {
+            // Если есть рецепт (сложный крафт)
+            if (item.recipe) {
+                for (let [ingId, count] of Object.entries(item.recipe)) {
+                    await supabaseClient.rpc('update_resource_safe', { res_id: parseInt(ingId), delta: -count });
+                }
+            }
+            await supabaseClient.rpc('update_resource_safe', { res_id: item.id, delta: 1 });
+        }
+        init();
+    }
+
+    // 6. Отрисовка
+    function render(items) {
+        const grid = document.getElementById('inventory-grid');
+        grid.innerHTML = items.map(item => `
+            <div class="card p-4 rounded-xl flex flex-col justify-between">
+                <div class="flex gap-4">
+                    <img src="${item.image_url}" class="w-[70px] h-[70px] rounded-lg bg-[#18181B] object-cover border border-[#232329]" />
+                    <div>
+                        <h3 class="font-bold text-lg leading-tight">${item.title}</h3>
+                        <p class="text-[#A1A1AA] text-xs uppercase mt-1 tracking-wider">${item.category}</p>
+                    </div>
+                </div>
+
+                <div class="mt-6 flex items-center justify-between">
+                    <div>
+                        <span class="text-2xl font-mono ${item.count === 0 ? 'text-[#EF4444]' : 'text-[#22C55E]'}">${item.count}</span>
+                        <span class="text-[#A1A1AA] text-sm ml-1">шт.</span>
+                    </div>
+                    
+                    ${isAdmin ? `
+                        <div class="flex gap-2">
+                            <button onclick='handleAction(${JSON.stringify(item)}, "add")' class="btn-success px-3 py-2 rounded-lg text-xs font-bold uppercase">Сдали</button>
+                            <button onclick='handleAction(${JSON.stringify(item)}, "craft")' class="bg-[#60A5FA] px-3 py-2 rounded-lg text-xs font-bold uppercase text-black">Скрафтил</button>
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // Вспомогательные функции
+    function setCategory(cat) {
+        currentCategory = cat;
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('tab-active'));
+        event.target.classList.add('tab-active');
+        loadResources();
+    }
+
+    function toggleRole() {
+        isAdmin = !isAdmin;
+        document.getElementById('role-text').innerText = isAdmin ? 'Админ' : 'Пользователь';
+        document.getElementById('role-text').className = isAdmin ? 'text-[#22C55E]' : 'text-[#A1A1AA]';
+        loadResources();
+    }
+
+    init();
+</script>
+
+</body>
+</html>
