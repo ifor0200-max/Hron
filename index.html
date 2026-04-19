@@ -3,159 +3,176 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Game Resource Portal</title>
+    <title>Склад Ресурсов</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         body { background-color: #0B0B0C; color: #F3F4F6; font-family: 'Inter', sans-serif; }
         .card { background-color: #121214; border: 1px solid #232329; transition: all 0.2s; }
-        .card:hover { border-color: #60A5FA; }
-        .btn-success { background-color: #22C55E; }
-        .btn-danger { background-color: #EF4444; }
-        .text-warning { color: #F59E0B; }
-        .tab-active { color: #60A5FA; border-bottom: 2px solid #60A5FA; }
+        .card:hover { border-color: #22D3EE; }
+        .tab-btn { padding: 8px 16px; border-radius: 8px; transition: 0.3s; }
+        .tab-active { background-color: #18181B; color: #60A5FA; border: 1px solid #232329; }
+        .scroll-hide::-webkit-scrollbar { display: none; }
     </style>
 </head>
-<body class="p-4">
+<body class="p-4 md:p-8">
 
-<div class="max-w-6xl mx-auto">
-    <header class="flex justify-between items-center mb-8 py-4 border-b border-[#232329]">
-        <div>
-            <h1 class="text-2xl font-bold tracking-tight">СКЛАД РЕСУРСОВ</h1>
-            <p id="stats" class="text-[#A1A1AA] text-sm">Загрузка статистики...</p>
+    <div class="max-w-6xl mx-auto">
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-[#232329] pb-6">
+            <div>
+                <h1 class="text-3xl font-bold tracking-tighter text-[#F3F4F6]">УЧЕТ РЕСУРСОВ</h1>
+                <p class="text-[#A1A1AA] text-sm mt-1">Автоматический расчет крафта и гниения</p>
+            </div>
+            <div class="flex gap-3">
+                <input type="text" id="search" placeholder="Поиск предмета..." oninput="loadResources()" 
+                       class="bg-[#121214] border border-[#232329] px-4 py-2 rounded-lg focus:outline-none focus:border-[#60A5FA]">
+                <button onclick="toggleRole()" id="role-btn" class="bg-[#18181B] border border-[#232329] px-4 py-2 rounded-lg text-sm">
+                    Режим: <span id="role-text" class="text-[#22C55E] font-bold">Админ</span>
+                </button>
+            </div>
+        </header>
+
+        <nav class="flex gap-2 mb-8 overflow-x-auto scroll-hide pb-2">
+            <button onclick="setCategory('all')" class="tab-btn tab-active">Все</button>
+            <button onclick="setCategory('shells')" class="tab-btn">Ракушки</button>
+            <button onclick="setCategory('feathers')" class="tab-btn">Перья</button>
+            <button onclick="setCategory('meds')" class="tab-btn">Травы</button>
+            <button onclick="setCategory('pets')" class="tab-btn">Домашние</button>
+        </nav>
+
+        <div id="inventory-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div class="text-[#A1A1AA]">Загрузка склада...</div>
         </div>
-        <button onclick="toggleRole()" id="role-btn" class="bg-[#18181B] border border-[#232329] px-4 py-2 rounded-lg text-sm font-semibold">
-            Режим: <span class="text-[#22C55E]" id="role-text">Админ</span>
-        </button>
-    </header>
-
-    <nav class="flex gap-6 mb-8 text-[#A1A1AA] overflow-x-auto pb-2">
-        <button onclick="setCategory('all')" class="tab-btn tab-active whitespace-nowrap">Все</button>
-        <button onclick="setCategory('shells')" class="tab-btn whitespace-nowrap">Ракушки</button>
-        <button onclick="setCategory('feathers')" class="tab-btn whitespace-nowrap">Перья</button>
-        <button onclick="setCategory('pets')" class="tab-btn whitespace-nowrap">Домашние</button>
-        <button onclick="setCategory('meds')" class="tab-btn whitespace-nowrap">Целебные</button>
-    </nav>
-
-    <div id="inventory-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        </div>
-</div>
+    </div>
 
 <script>
-    // 1. Конфигурация (ВСТАВЬТЕ СВОИ ДАННЫЕ)
-    const SB_URL = 'ВАШ_SUPABASE_URL';
-    const SB_KEY = 'ВАШ_SUPABASE_ANON_KEY';
+    const SB_URL = 'https://bghppzchqmxpdnhpzirv.supabase.co';
+    const SB_KEY = 'sb_publishable_HrLoyv6M03rTAQo4s3srWA_rPSt0xDy';
     const supabaseClient = supabase.createClient(SB_URL, SB_KEY);
 
     let currentCategory = 'all';
     let isAdmin = true;
 
-    // 2. Инициализация
+    // Сроки гниения (в днях)
+    const EXPIRY_DAYS = {
+        'Крепкая ветка': 3,
+        'Целебная водоросль': 3,
+        'Мед': 3,
+        'Вьюнок': 3,
+        'Крепкая водоросль': 3,
+        'Трава от кашля': 4,
+        'Трава от отравления': 4
+    };
+
     async function init() {
-        await checkRottenItems(); // Проверка гниения
+        await processRottenLogic();
         await loadResources();
     }
 
-    // 3. Логика гниения (4 суток)
-    async function checkRottenItems() {
-        const fourDaysAgo = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
-        
-        // Находим записи, созданные более 4 дней назад, которые еще не помечены как сгнившие
-        const { data: rotten } = await supabaseClient
+    async function processRottenLogic() {
+        const { data: expiring } = await supabaseClient
             .from('expiring_items')
-            .select('id, resource_id')
-            .lt('created_at', fourDaysAgo)
+            .select('*, resources(title)')
             .eq('is_rotten', false);
 
-        if (rotten && rotten.length > 0) {
-            for (let item of rotten) {
-                // Уменьшаем общее количество в таблице ресурсов
+        if (!expiring) return;
+
+        for (let item of expiring) {
+            const limit = EXPIRY_DAYS[item.resources.title] || 999;
+            const msPassed = Date.now() - new Date(item.created_at).getTime();
+            const daysPassed = msPassed / (1000 * 60 * 60 * 24);
+
+            if (daysPassed >= limit) {
                 await supabaseClient.rpc('update_resource_safe', { res_id: item.resource_id, delta: -1 });
-                // Помечаем как сгнившее
                 await supabaseClient.from('expiring_items').update({ is_rotten: true }).eq('id', item.id);
             }
         }
     }
 
-    // 4. Загрузка данных
     async function loadResources() {
+        const search = document.getElementById('search').value.toLowerCase();
         let query = supabaseClient.from('resources').select('*');
+        
         if (currentCategory !== 'all') query = query.eq('category', currentCategory);
         
-        const { data, error } = await query.order('id', { ascending: true });
-        if (data) render(data);
+        const { data } = await query.order('id', { ascending: true });
+        
+        if (data) {
+            const filtered = data.filter(i => i.title.toLowerCase().includes(search));
+            render(filtered);
+        }
     }
 
-    // 5. Функция Крафта / Сдачи
-    async function handleAction(item, type) {
+    async function handleAction(item, mode) {
         if (!isAdmin) return;
 
-        if (type === 'add') {
+        if (mode === 'add') {
             await supabaseClient.rpc('update_resource_safe', { res_id: item.id, delta: 1 });
-            // Если это лечилка, добавляем запись в таблицу гниения
-            if (item.category === 'meds') {
+            if (EXPIRY_DAYS[item.title]) {
                 await supabaseClient.from('expiring_items').insert({ resource_id: item.id });
             }
-        } else {
-            // Если есть рецепт (сложный крафт)
+        } else if (mode === 'craft') {
             if (item.recipe) {
+                // Проверка ресурсов перед крафтом
                 for (let [ingId, count] of Object.entries(item.recipe)) {
                     await supabaseClient.rpc('update_resource_safe', { res_id: parseInt(ingId), delta: -count });
                 }
             }
             await supabaseClient.rpc('update_resource_safe', { res_id: item.id, delta: 1 });
+        } else if (mode === 'sub') {
+            await supabaseClient.rpc('update_resource_safe', { res_id: item.id, delta: -1 });
         }
-        init();
+        loadResources();
     }
 
-    // 6. Отрисовка
     function render(items) {
         const grid = document.getElementById('inventory-grid');
         grid.innerHTML = items.map(item => `
-            <div class="card p-4 rounded-xl flex flex-col justify-between">
+            <div class="card p-4 rounded-xl flex flex-col justify-between relative overflow-hidden">
                 <div class="flex gap-4">
-                    <img src="${item.image_url}" class="w-[70px] h-[70px] rounded-lg bg-[#18181B] object-cover border border-[#232329]" />
-                    <div>
-                        <h3 class="font-bold text-lg leading-tight">${item.title}</h3>
-                        <p class="text-[#A1A1AA] text-xs uppercase mt-1 tracking-wider">${item.category}</p>
+                    <img src="${item.image_url}" class="w-[70px] h-[70px] rounded-lg bg-[#18181B] border border-[#232329] object-cover" />
+                    <div class="flex-1">
+                        <h3 class="font-bold text-sm leading-tight h-10 overflow-hidden">${item.title}</h3>
+                        ${EXPIRY_DAYS[item.title] ? `<span class="text-[#F59E0B] text-[10px] font-bold uppercase">⏳ ${EXPIRY_DAYS[item.title]} дн.</span>` : ''}
                     </div>
                 </div>
 
-                <div class="mt-6 flex items-center justify-between">
-                    <div>
-                        <span class="text-2xl font-mono ${item.count === 0 ? 'text-[#EF4444]' : 'text-[#22C55E]'}">${item.count}</span>
-                        <span class="text-[#A1A1AA] text-sm ml-1">шт.</span>
-                    </div>
+                <div class="mt-4 flex items-center justify-between">
+                    <div class="text-2xl font-mono ${item.count <= 0 ? 'text-[#EF4444]' : 'text-[#22C55E]'}">${item.count}</div>
                     
                     ${isAdmin ? `
-                        <div class="flex gap-2">
-                            <button onclick='handleAction(${JSON.stringify(item)}, "add")' class="btn-success px-3 py-2 rounded-lg text-xs font-bold uppercase">Сдали</button>
-                            <button onclick='handleAction(${JSON.stringify(item)}, "craft")' class="bg-[#60A5FA] px-3 py-2 rounded-lg text-xs font-bold uppercase text-black">Скрафтил</button>
-                        </div>
+                    <div class="flex gap-1">
+                        <button onclick='handleAction(${JSON.stringify(item)}, "add")' class="bg-[#22C55E] p-2 rounded text-[10px] font-bold">СДАЛИ</button>
+                        ${item.recipe ? `
+                        <button onclick='handleAction(${JSON.stringify(item)}, "craft")' class="bg-[#60A5FA] p-2 rounded text-[10px] font-bold text-black">КРАФТ</button>
+                        ` : `
+                        <button onclick='handleAction(${JSON.stringify(item)}, "sub")' class="bg-[#EF4444] p-2 rounded text-[10px] font-bold">ВЫЧЕСТЬ</button>
+                        `}
+                    </div>
                     ` : ''}
                 </div>
             </div>
         `).join('');
     }
 
-    // Вспомогательные функции
     function setCategory(cat) {
         currentCategory = cat;
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('tab-active'));
-        event.target.classList.add('tab-active');
+        document.querySelectorAll('.tab-btn').forEach(b => {
+            b.classList.remove('tab-active');
+            if(b.innerText.toLowerCase().includes(cat) || (cat === 'all' && b.innerText === 'Все')) b.classList.add('tab-active');
+        });
         loadResources();
     }
 
     function toggleRole() {
         isAdmin = !isAdmin;
-        document.getElementById('role-text').innerText = isAdmin ? 'Админ' : 'Пользователь';
+        document.getElementById('role-text').innerText = isAdmin ? 'Админ' : 'Зритель';
         document.getElementById('role-text').className = isAdmin ? 'text-[#22C55E]' : 'text-[#A1A1AA]';
         loadResources();
     }
 
     init();
 </script>
-
 </body>
 </html>
