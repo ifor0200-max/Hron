@@ -1,737 +1,231 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Склад · Учёт ресурсов</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#07080B;--s1:#0E1018;--s2:#131620;
-  --bd:#1A1D28;--bdh:#3E7FFF;
-  --tx:#BFC6DC;--mu:#44495E;
-  --g:#22C55E;--b:#4F9EFF;--r:#EF4444;--a:#F59E0B;--c:#2DD4BF;--vi:#A78BFA;
-  --g2:rgba(34,197,94,.12);--b2:rgba(79,158,255,.12);--r2:rgba(239,68,68,.12);
-  --a2:rgba(245,158,11,.12);--c2:rgba(45,212,191,.12);--vi2:rgba(167,139,250,.12);
-}
-body{background:var(--bg);color:var(--tx);font-family:'Manrope',sans-serif;min-height:100vh;font-size:13px}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Warehouse OS</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0B0B0C; --card: #121214; --surface: #18181B; --border: #232329;
+            --text: #F3F4F6; --muted: #A1A1AA; --green: #22C55E; --orange: #F59E0B;
+            --red: #EF4444; --accent: #60A5FA;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; font-size: 11px; }
+        
+        .container { max-width: 1400px; margin: 0 auto; padding: 12px; }
+        
+        /* HEADER & UI CONTROLS */
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .nav-group { display: flex; gap: 4px; overflow-x: auto; }
+        .btn-ui { background: var(--card); border: 1px solid var(--border); color: var(--muted); padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: 600; white-space: nowrap; }
+        .btn-ui.active { border-color: var(--accent); color: var(--accent); background: rgba(96, 165, 250, 0.1); }
+        .debug-toggle { color: var(--orange); border-color: var(--orange); margin-left: 10px; }
+        .debug-active { background: var(--orange) !important; color: #000 !important; }
 
-/* ── TOAST ── */
-#toasts{position:fixed;top:16px;right:16px;display:flex;flex-direction:column;gap:6px;z-index:9999;pointer-events:none}
-.toast{background:var(--s2);border:1px solid var(--bd);padding:8px 14px;border-radius:8px;font-size:11px;
-  font-family:'Space Mono',monospace;animation:tin .2s ease,tout .35s ease 2.2s forwards;pointer-events:all}
-.toast.ok{border-left:3px solid var(--g)}.toast.err{border-left:3px solid var(--r)}.toast.info{border-left:3px solid var(--b)}
-@keyframes tin{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:none}}
-@keyframes tout{to{opacity:0}}
+        /* GRID */
+        #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; }
+        .card { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 6px; display: flex; flex-direction: column; position: relative; }
+        .card:hover { border-color: #333; }
+        
+        .item-info { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+        .icon { font-size: 16px; width: 24px; text-align: center; }
+        .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+        
+        .craft-text { font-size: 9px; color: var(--muted); line-height: 1.1; margin-bottom: 6px; min-height: 20px; }
+        .craft-text b { color: var(--text); }
 
-/* ── LAYOUT ── */
-.wrap{max-width:1280px;margin:0 auto;padding:20px 16px}
+        .controls { display: flex; justify-content: space-between; align-items: center; background: var(--surface); padding: 2px 4px; border-radius: 4px; }
+        .count { font-family: 'JetBrains Mono'; font-size: 14px; }
+        .qty-btn { background: none; border: none; color: var(--muted); cursor: pointer; padding: 0 6px; font-size: 16px; font-weight: bold; }
+        .qty-btn:hover { color: var(--text); }
+        
+        .btn-build { width: 100%; margin-top: 4px; background: rgba(96, 165, 250, 0.15); border: 1px solid var(--accent); color: var(--accent); border-radius: 4px; padding: 2px; font-size: 9px; cursor: pointer; text-transform: uppercase; font-weight: 700; }
+        .btn-build:disabled { opacity: 0.1; cursor: not-allowed; border-color: var(--border); color: var(--muted); }
 
-/* ── HEADER ── */
-header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;
-  border-bottom:1px solid var(--bd);padding-bottom:16px;margin-bottom:16px}
-.logo h1{font-size:18px;font-weight:800;letter-spacing:-.3px;
-  background:linear-gradient(120deg,#fff 20%,var(--c));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.logo p{color:var(--mu);font-size:10px;margin-top:1px;font-family:'Space Mono',monospace}
-.hcontrols{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+        /* DASHBOARD */
+        #dashboard { display: none; padding: 20px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; }
+        .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; text-align: center; }
+        .stat-box h3 { font-size: 10px; color: var(--muted); margin-bottom: 5px; }
+        .stat-val { font-size: 32px; font-family: 'JetBrains Mono'; }
 
-.inp{background:var(--s1);border:1px solid var(--bd);color:var(--tx);padding:6px 12px;border-radius:7px;
-  font-family:'Space Mono',monospace;font-size:11px;outline:none;transition:border-color .15s;width:180px}
-.inp:focus{border-color:var(--bdh)}
-.btn{background:var(--s1);border:1px solid var(--bd);color:var(--tx);padding:6px 12px;border-radius:7px;
-  font-family:'Manrope',sans-serif;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap}
-.btn:hover{border-color:var(--bdh)}
-.btn.g{background:var(--g2);border-color:rgba(34,197,94,.3);color:var(--g)}
-.btn.b{background:var(--b2);border-color:rgba(79,158,255,.3);color:var(--b)}
-.btn.r{background:var(--r2);border-color:rgba(239,68,68,.3);color:var(--r)}
-.btn.a{background:var(--a2);border-color:rgba(245,158,11,.3);color:var(--a)}
-.btn.vi{background:var(--vi2);border-color:rgba(167,139,250,.3);color:var(--vi)}
-.btn:disabled{opacity:.35;cursor:not-allowed}
-
-/* ── STATS BAR ── */
-.sbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
-.schip{background:var(--s1);border:1px solid var(--bd);border-radius:7px;padding:6px 12px;
-  font-size:11px;font-family:'Space Mono',monospace;display:flex;align-items:center;gap:6px}
-.schip b{color:var(--c)}
-
-/* ── NAV ── */
-nav{display:flex;gap:5px;margin-bottom:16px;overflow-x:auto;padding-bottom:2px}
-nav::-webkit-scrollbar{display:none}
-.tab{background:transparent;border:1px solid var(--bd);color:var(--mu);padding:5px 13px;border-radius:7px;
-  font-family:'Manrope',sans-serif;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap}
-.tab.active{background:var(--c2);border-color:rgba(45,212,191,.3);color:var(--c)}
-
-/* ── GRID ── */
-#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:10px}
-
-/* ── CARD ── */
-.card{background:var(--s1);border:1px solid var(--bd);border-radius:12px;padding:12px;
-  display:flex;flex-direction:column;gap:9px;transition:border-color .15s,transform .12s;position:relative}
-.card:hover{border-color:#252A3A;transform:translateY(-1px)}
-.card.expire{border-color:rgba(245,158,11,.22)}
-.card.craft-item{border-color:rgba(79,158,255,.18)}
-
-.ctop{display:flex;gap:9px;align-items:flex-start}
-.cicon{width:44px;height:44px;border-radius:8px;background:var(--s2);border:1px solid var(--bd);
-  object-fit:cover;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:22px}
-.cicon img{width:100%;height:100%;object-fit:cover;border-radius:7px}
-.cinfo{flex:1;min-width:0}
-.ctitle{font-size:11px;font-weight:700;line-height:1.35;
-  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:var(--tx)}
-.badge{display:inline-block;margin-top:3px;font-size:9px;font-family:'Space Mono',monospace;
-  padding:2px 6px;border-radius:4px;font-weight:400}
-.badge.a{background:var(--a2);color:var(--a)}
-.badge.b{background:var(--b2);color:#93C5FD}
-.badge.g{background:var(--g2);color:var(--g)}
-.badge.vi{background:var(--vi2);color:var(--vi)}
-
-.recipe-box{font-size:9px;font-family:'Space Mono',monospace;color:var(--mu);line-height:1.5;
-  background:var(--s2);border:1px solid var(--bd);border-radius:7px;padding:6px 8px}
-.recipe-box b{color:var(--b);font-size:9px}
-.recipe-warn{color:var(--r);font-size:9px;margin-top:2px}
-
-.cbot{display:flex;align-items:center;justify-content:space-between;gap:6px}
-.count{font-family:'Space Mono',monospace;font-size:24px;font-weight:700;line-height:1;min-width:32px}
-.count.ok{color:var(--g)}.count.warn{color:var(--a)}.count.zero{color:var(--r)}
-.acts{display:flex;gap:4px;flex-wrap:wrap}
-
-/* craft level selector */
-.craft-levels{display:flex;gap:3px;align-items:center}
-.lbtn{background:var(--vi2);border:1px solid rgba(167,139,250,.3);color:var(--vi);
-  padding:3px 7px;border-radius:5px;font-family:'Space Mono',monospace;font-size:9px;cursor:pointer;transition:all .15s}
-.lbtn:hover{border-color:var(--vi);}.lbtn:disabled{opacity:.3;cursor:not-allowed}
-
-/* ── LOADING ── */
-.loading{grid-column:1/-1;text-align:center;color:var(--mu);font-size:12px;padding:50px 0}
-.spin{width:24px;height:24px;border:2px solid var(--bd);border-top-color:var(--c);
-  border-radius:50%;animation:sp .7s linear infinite;margin:0 auto 10px}
-@keyframes sp{to{transform:rotate(360deg)}}
-
-/* live dot */
-.dot{display:inline-block;width:5px;height:5px;background:var(--g);border-radius:50%;
-  animation:pulse 2s ease-in-out infinite;vertical-align:middle;margin-right:4px}
-@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.75)}}
-
-/* ═══════════════════════════════
-   DASHBOARD
-═══════════════════════════════ */
-#dashboard{display:none}
-.dsection{margin-bottom:24px}
-.dtitle{font-size:11px;font-weight:700;color:var(--mu);letter-spacing:.08em;text-transform:uppercase;
-  margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--bd)}
-
-/* summary row */
-.dsum{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
-.dcard{background:var(--s1);border:1px solid var(--bd);border-radius:10px;padding:12px 14px}
-.dcard .dlabel{font-size:10px;color:var(--mu);font-family:'Space Mono',monospace;margin-bottom:4px}
-.dcard .dval{font-size:26px;font-weight:800;font-family:'Space Mono',monospace;line-height:1}
-.dcard .dsub{font-size:9px;color:var(--mu);margin-top:2px;font-family:'Space Mono',monospace}
-
-/* bar chart */
-.bchart{display:flex;flex-direction:column;gap:5px}
-.brow{display:flex;align-items:center;gap:8px}
-.bname{font-size:10px;font-family:'Space Mono',monospace;width:170px;flex-shrink:0;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx)}
-.btrack{flex:1;background:var(--s2);border-radius:4px;height:14px;position:relative;overflow:hidden;min-width:0}
-.bfill{height:100%;border-radius:4px;transition:width .4s ease;min-width:2px}
-.bval{font-size:9px;font-family:'Space Mono',monospace;color:var(--mu);width:30px;text-align:right;flex-shrink:0}
-
-/* stats table */
-.stable{width:100%;border-collapse:collapse;font-size:11px}
-.stable th{text-align:left;font-size:9px;font-weight:700;color:var(--mu);font-family:'Space Mono',monospace;
-  padding:4px 10px;border-bottom:1px solid var(--bd);white-space:nowrap;letter-spacing:.06em;text-transform:uppercase}
-.stable td{padding:6px 10px;border-bottom:1px solid rgba(26,29,40,.6);font-family:'Space Mono',monospace;font-size:10px}
-.stable tr:last-child td{border-bottom:none}
-.stable tr:hover td{background:var(--s2)}
-.tg{color:var(--g)}.tr{color:var(--r)}.tb{color:var(--b)}.ta{color:var(--a)}
-
-/* category breakdown */
-.catrow{display:flex;gap:10px;flex-wrap:wrap}
-.catcard{background:var(--s1);border:1px solid var(--bd);border-radius:10px;padding:10px 14px;flex:1;min-width:110px}
-.catcard .catlabel{font-size:10px;color:var(--mu);margin-bottom:3px}
-.catcard .catval{font-size:20px;font-weight:800;font-family:'Space Mono',monospace}
-.catcard .catsub{font-size:9px;color:var(--mu);font-family:'Space Mono',monospace;margin-top:1px}
-
-@media(max-width:600px){
-  .wrap{padding:12px 10px}
-  .logo h1{font-size:15px}
-  .inp{width:140px}
-  #grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
-}
-</style>
+        #toasts { position: fixed; bottom: 10px; right: 10px; z-index: 99; }
+        .toast { background: var(--surface); border: 1px solid var(--border); padding: 6px 12px; border-radius: 4px; font-size: 10px; margin-top: 4px; border-left: 3px solid var(--accent); }
+    </style>
 </head>
 <body>
+
+<div class="container">
+    <header>
+        <div class="nav-group">
+            <button class="btn-ui active" onclick="setView('all')">ВСЕ</button>
+            <button class="btn-ui" onclick="setView('shells')">РАКУШКИ</button>
+            <button class="btn-ui" onclick="setView('meds')">ТРАВЫ</button>
+            <button class="btn-ui" onclick="setView('dashboard')">📊 СТАТИСТИКА</button>
+        </div>
+        <div>
+            <input type="text" id="search" class="btn-ui" placeholder="Поиск..." oninput="render()">
+            <button id="debug-btn" class="btn-ui debug-toggle" onclick="toggleDebug()">DEBUG: OFF</button>
+        </div>
+    </header>
+
+    <div id="grid"></div>
+
+    <div id="dashboard">
+        <div class="stat-grid">
+            <div class="stat-box"><h3>ВСЕГО ПРЕДМЕТОВ</h3><div class="stat-val" id="st-total">0</div></div>
+            <div class="stat-box"><h3>ПРИБЫЛЬ</h3><div class="stat-val" style="color:var(--green)" id="st-in">0</div></div>
+            <div class="stat-box"><h3>УБЫЛЬ</h3><div class="stat-val" style="color:var(--red)" id="st-out">0</div></div>
+        </div>
+        <div style="margin-top: 30px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+            <div><h3 style="color:var(--muted); margin-bottom:10px">ПОПУЛЯРНЫЕ</h3><div id="st-pop"></div></div>
+            <div><h3 style="color:var(--muted); margin-bottom:10px">ДЕФИЦИТ</h3><div id="st-low"></div></div>
+        </div>
+    </div>
+</div>
+
 <div id="toasts"></div>
-<div class="wrap">
-
-<header>
-  <div class="logo">
-    <h1>⬡ СКЛАД РЕСУРСОВ</h1>
-    <p><span class="dot"></span>Live sync · Крафт · Гниение · Статистика</p>
-  </div>
-  <div class="hcontrols">
-    <input class="inp" type="text" id="search" placeholder="Поиск..." oninput="loadResources()">
-    <button class="btn" onclick="toggleRole()" id="role-btn">Режим: <span id="role-text" style="color:var(--g);font-weight:800">Админ</span></button>
-  </div>
-</header>
-
-<div class="sbar" id="sbar"></div>
-
-<nav>
-  <button class="tab active" data-cat="all"       onclick="setTab('all')">Все</button>
-  <button class="tab"        data-cat="shells"    onclick="setTab('shells')">🐚 Ракушки</button>
-  <button class="tab"        data-cat="feathers"  onclick="setTab('feathers')">🪶 Перья</button>
-  <button class="tab"        data-cat="meds"      onclick="setTab('meds')">🌿 Травы</button>
-  <button class="tab"        data-cat="pets"      onclick="setTab('pets')">🐾 Питомцы</button>
-  <button class="tab"        data-cat="dashboard" onclick="setTab('dashboard')">📊 Дашборд</button>
-</nav>
-
-<div id="grid"><div class="loading"><div class="spin"></div>Загрузка склада…</div></div>
-<div id="dashboard"></div>
-
-</div><!-- /wrap -->
 
 <script>
-/* ═══════════════════════════════════════════
-   SUPABASE
-═══════════════════════════════════════════ */
-const SB_URL = 'https://bghppzchqmxpdnhpzirv.supabase.co';
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJnaHBwemNocW14cGRuaHB6aXJ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1OTM0MTksImV4cCI6MjA5MjE2OTQxOX0.9fbU2WvZVMCadO90XZ3zu1S-2LdRlwW0C0SUUehMgy4';
-const sb = supabase.createClient(SB_URL, SB_KEY);
+    const SB_URL = 'https://bghppzchqmxpdnhpzirv.supabase.co';
+    const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJnaHBwemNocW14cGRuaHB6aXJ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1OTM0MTksImV4cCI6MjA5MjE2OTQxOX0.9fbU2WvZVMCadO90XZ3zu1S-2LdRlwW0C0SUUehMgy4';
+    const sb = supabase.createClient(SB_URL, SB_KEY);
 
-/* ═══════════════════════════════════════════
-   CONSTANTS
-═══════════════════════════════════════════ */
-const EXPIRY = {
-  'Крепкая ветка':3,'Целебная водоросль':3,'Мед':3,
-  'Вьюнок':3,'Крепкая водоросль':3,
-  'Трава от кашля':4,'Трава от отравления':4,
-};
+    let items = [];
+    let curView = 'all';
+    let isDebug = false;
+    let history = { in: 0, out: 0, pop: {} };
 
-const CAT_EMOJI = {shells:'🐚',feathers:'🪶',meds:'🌿',pets:'🐾'};
-const ITEM_EMOJI = {
-  'Ракушка на 15':'🐚','Ракушка на 20':'🐚','Ракушка на 28':'🐚','Ракушка на 30':'🐚','Ракушка за сон':'🌙',
-  'Красное перо':'🔴','Синее перо':'🔵','Черное перо':'⚫',
-  'Крепкая ветка':'🪵','Целебная водоросль':'🌊','Мед':'🍯','Вьюнок':'🌿',
-  'Крепкая водоросль':'💧','Трава от кашля':'🫁','Трава от отравления':'☠️','Паутина':'🕸️',
-  'Смесь из ракушек 1 (4 исп.)':'✨','Смесь из ракушек 2 (4 исп.)':'✨','Смесь из перьев (4 исп.)':'🌈',
-  'Костоправ из трав':'💊','Костоправ из паутины':'🕷️',
-  // Collars / ошейники
-  'Черный ошейник':'⬛','Синий ошейник':'🟦','Желтый ошейник':'🟨','Белый ошейник':'⬜',
-  'Красный ошейник':'🟥','Зеленый ошейник':'🟩','Фиолетовый ошейник':'🟪',
-  'Черный ошейник 2 ур.':'⬛','Черный ошейник 3 ур.':'⬛',
-  'Синий ошейник 2 ур.':'🟦','Синий ошейник 3 ур.':'🟦',
-  'Желтый ошейник 2 ур.':'🟨','Желтый ошейник 3 ур.':'🟨',
-  // Ropes / веревки
-  'Черная веревка':'🖤','Синяя веревка':'💙','Желтая веревка':'💛','Белая веревка':'🤍',
-  'Черная веревка 2 ур.':'🖤','Черная веревка 3 ур.':'🖤',
-  'Синяя веревка 2 ур.':'💙','Синяя веревка 3 ур.':'💙',
-  // Bows / бантики
-  'Синий бантик':'🎀','Желтый бантик':'🎀','Красный бантик':'🎀','Белый бантик':'🎀',
-  'Синий бантик 2 ур.':'🎀','Синий бантик 3 ур.':'🎀',
-  'Желтый бантик 2 ур.':'🎀','Желтый бантик 3 ур.':'🎀',
-};
+    const COLORS = ['Черный', 'Синий', 'Желтый', 'Красный', 'Зеленый', 'Белый'];
+    const RECIPES = {};
 
-// ── Title-based craft recipes (resolved to IDs at runtime) ──
-// Keys = item title that CAN be crafted
-// Values = { ingredientTitle: quantity, ... }
-const CRAFT_TEMPLATES = {
-  // ── Смеси (Shell mixes) ──
-  'Смесь из ракушек 1 (4 исп.)':   { 'Ракушка на 15': 2, 'Ракушка на 20': 1 },
-  'Смесь из ракушек 2 (4 исп.)':   { 'Ракушка на 20': 1, 'Ракушка на 28': 1, 'Ракушка на 30': 1 },
-  'Смесь из перьев (4 исп.)':       { 'Красное перо': 1, 'Синее перо': 1, 'Черное перо': 1 },
+    // 1. Ошейники и Веревки (все цвета)
+    COLORS.forEach(c => {
+        RECIPES[`${c} ошейник`] = {[`${c} ткань`]: 3};
+        RECIPES[`${c} веревка`] = {[`${c} ткань`]: 3};
+    });
 
-  // ── Костоправы (Healers) уровень 1 ──
-  'Костоправ из трав':     { 'Трава от кашля': 1, 'Трава от отравления': 1, 'Вьюнок': 1 },
-  'Костоправ из паутины':  { 'Паутина': 3, 'Мед': 1 },
-  // уровень 2
-  'Костоправ из трав 2 ур.':    { 'Костоправ из трав': 1, 'Целебная водоросль': 2, 'Мед': 1 },
-  'Костоправ из паутины 2 ур.': { 'Костоправ из паутины': 1, 'Паутина': 2, 'Крепкая ветка': 1 },
-  // уровень 3
-  'Костоправ из трав 3 ур.':    { 'Костоправ из трав 2 ур.': 1, 'Целебная водоросль': 4, 'Мед': 2 },
-  'Костоправ из паутины 3 ур.': { 'Костоправ из паутины 2 ур.': 1, 'Паутина': 4, 'Крепкая ветка': 2 },
+    // 2. Бантики
+    RECIPES['Синий бантик'] = {'Синяя ткань': 3};
+    RECIPES['Желтый бантик'] = {'Желтая ткань': 3};
 
-  // ── Ошейники (Collars) — каждый цвет = 3 ткани ──
-  'Черный ошейник':     { 'Черная ткань': 3 },
-  'Синий ошейник':      { 'Синяя ткань': 3 },
-  'Желтый ошейник':     { 'Желтая ткань': 3 },
-  'Белый ошейник':      { 'Белая ткань': 3 },
-  'Красный ошейник':    { 'Красная ткань': 3 },
-  'Зеленый ошейник':    { 'Зеленая ткань': 3 },
-  'Фиолетовый ошейник': { 'Фиолетовая ткань': 3 },
-  // уровень 2
-  'Черный ошейник 2 ур.':     { 'Черный ошейник': 1, 'Черная ткань': 2, 'Крепкая ветка': 1 },
-  'Синий ошейник 2 ур.':      { 'Синий ошейник': 1, 'Синяя ткань': 2, 'Крепкая ветка': 1 },
-  'Желтый ошейник 2 ур.':     { 'Желтый ошейник': 1, 'Желтая ткань': 2, 'Крепкая ветка': 1 },
-  'Белый ошейник 2 ур.':      { 'Белый ошейник': 1, 'Белая ткань': 2, 'Крепкая ветка': 1 },
-  // уровень 3
-  'Черный ошейник 3 ур.':     { 'Черный ошейник 2 ур.': 1, 'Черная ткань': 4, 'Мед': 1 },
-  'Синий ошейник 3 ур.':      { 'Синий ошейник 2 ур.': 1, 'Синяя ткань': 4, 'Мед': 1 },
-  'Желтый ошейник 3 ур.':     { 'Желтый ошейник 2 ур.': 1, 'Желтая ткань': 4, 'Мед': 1 },
-  'Белый ошейник 3 ур.':      { 'Белый ошейник 2 ур.': 1, 'Белая ткань': 4, 'Мед': 1 },
+    // 3. Поделки из бумаги, кораблик, олень (1, 2, 3 уровни одинаковы)
+    ['Поделка из бумаги', 'Кораблик в бутылке', 'Олень'].forEach(item => {
+        RECIPES[`${item} 1 ур.`] = {'Бумага': 2, 'Клей': 1};
+        RECIPES[`${item} 2 ур.`] = {'Бумага': 4, 'Клей': 2};
+        RECIPES[`${item} 3 ур.`] = {'Бумага': 6, 'Клей': 3};
+    });
 
-  // ── Веревки (Ropes) ──
-  'Черная веревка':     { 'Черная ткань': 3 },
-  'Синяя веревка':      { 'Синяя ткань': 3 },
-  'Желтая веревка':     { 'Желтая ткань': 3 },
-  'Белая веревка':      { 'Белая ткань': 3 },
-  // уровень 2
-  'Черная веревка 2 ур.':  { 'Черная веревка': 1, 'Черная ткань': 2 },
-  'Синяя веревка 2 ур.':   { 'Синяя веревка': 1, 'Синяя ткань': 2 },
-  'Желтая веревка 2 ур.':  { 'Желтая веревка': 1, 'Желтая ткань': 2 },
-  // уровень 3
-  'Черная веревка 3 ур.':  { 'Черная веревка 2 ур.': 1, 'Черная ткань': 4 },
-  'Синяя веревка 3 ур.':   { 'Синяя веревка 2 ур.': 1, 'Синяя ткань': 4 },
-  'Желтая веревка 3 ур.':  { 'Желтая веревка 2 ур.': 1, 'Желтая ткань': 4 },
+    // 4. Грузы
+    [2,3,4,5].forEach(lvl => {
+        RECIPES[`Груз ${lvl} ур.`] = {'Брусок': lvl, 'Синяя ткань': 1};
+    });
 
-  // ── Бантики (Bows) ──
-  'Синий бантик':   { 'Синяя ткань': 3 },
-  'Желтый бантик':  { 'Желтая ткань': 3 },
-  'Красный бантик': { 'Красная ткань': 3 },
-  'Белый бантик':   { 'Белая ткань': 3 },
-  // уровень 2
-  'Синий бантик 2 ур.':   { 'Синий бантик': 1, 'Синяя ткань': 2 },
-  'Желтый бантик 2 ур.':  { 'Желтый бантик': 1, 'Желтая ткань': 2 },
-  'Красный бантик 2 ур.': { 'Красный бантик': 1, 'Красная ткань': 2 },
-  // уровень 3
-  'Синий бантик 3 ур.':   { 'Синий бантик 2 ур.': 1, 'Синяя ткань': 4, 'Крепкая ветка': 1 },
-  'Желтый бантик 3 ур.':  { 'Желтый бантик 2 ур.': 1, 'Желтая ткань': 4, 'Крепкая ветка': 1 },
-  'Красный бантик 3 ур.': { 'Красный бантик 2 ур.': 1, 'Красная ткань': 4, 'Крепкая ветка': 1 },
-};
-
-/* ═══════════════════════════════════════════
-   STATS (localStorage)
-═══════════════════════════════════════════ */
-const STATS_KEY = 'res_stats_v2';
-function getStats(){try{return JSON.parse(localStorage.getItem(STATS_KEY))||{};}catch{return{};}}
-function addStat(id, field, n=1){
-  const s=getStats();
-  if(!s[id])s[id]={added:0,removed:0,crafted:0};
-  s[id][field]=(s[id][field]||0)+n;
-  localStorage.setItem(STATS_KEY,JSON.stringify(s));
-}
-function getStat(id,field){const s=getStats();return s[id]?s[id][field]||0:0;}
-
-/* ═══════════════════════════════════════════
-   STATE
-═══════════════════════════════════════════ */
-let currentTab = 'all';
-let isAdmin = true;
-let allResources = [];
-
-/* ═══════════════════════════════════════════
-   TOAST
-═══════════════════════════════════════════ */
-function toast(msg,type='ok'){
-  const el=document.createElement('div');
-  el.className=`toast ${type}`;el.textContent=msg;
-  document.getElementById('toasts').appendChild(el);
-  setTimeout(()=>el.remove(),2800);
-}
-
-/* ═══════════════════════════════════════════
-   RECIPE HELPERS
-═══════════════════════════════════════════ */
-// Get recipe for an item: prefer DB recipe, fallback to CRAFT_TEMPLATES
-function getRecipe(item){
-  if(item.recipe) return item.recipe; // DB recipe (id→qty)
-  const tmpl = CRAFT_TEMPLATES[item.title];
-  if(!tmpl) return null;
-  return resolveRecipe(tmpl); // title→qty → id→qty
-}
-
-// Resolve a title-based recipe to {id:qty}
-function resolveRecipe(tmpl){
-  const out={};
-  for(const [title,qty] of Object.entries(tmpl)){
-    const res=allResources.find(r=>r.title===title);
-    if(res) out[res.id]=qty;
-    else out[`?${title}`]=qty; // unresolved (ingredient not in DB yet)
-  }
-  return out;
-}
-
-function getRecipeText(recipe){
-  if(!recipe) return null;
-  return Object.entries(recipe).map(([id,qty])=>{
-    if(String(id).startsWith('?')) return `<span style="color:var(--r)">⚠ ${id.slice(1)} × ${qty}</span>`;
-    const res=allResources.find(r=>r.id===parseInt(id));
-    return `${res?res.title:`#${id}`} × ${qty}`;
-  }).join('<br>');
-}
-
-function canCraft(recipe){
-  if(!recipe) return false;
-  for(const [id,qty] of Object.entries(recipe)){
-    if(String(id).startsWith('?')) return false;
-    const res=allResources.find(r=>r.id===parseInt(id));
-    if(!res||(res.count||0)<qty) return false;
-  }
-  return true;
-}
-
-function isCraftable(item){
-  return !!(item.recipe || CRAFT_TEMPLATES[item.title]);
-}
-
-/* ═══════════════════════════════════════════
-   INIT & DATA
-═══════════════════════════════════════════ */
-async function init(){
-  await processRotten();
-  await loadResources();
-  subscribeRealtime();
-}
-
-async function processRotten(){
-  try{
-    const {data}=await sb.from('expiring_items').select('*,resources(title)').eq('is_rotten',false);
-    if(!data) return;
-    for(const item of data){
-      const limit=EXPIRY[item.resources?.title]??999;
-      const days=(Date.now()-new Date(item.created_at).getTime())/86400000;
-      if(days>=limit){
-        await sb.rpc('update_resource_safe',{res_id:item.resource_id,delta:-1});
-        await sb.from('expiring_items').update({is_rotten:true}).eq('id',item.id);
-        toast(`⏳ Сгнило: ${item.resources?.title}`,'err');
-      }
+    async function sync() {
+        const { data } = await sb.from('resources').select('*').order('title');
+        items = data || [];
+        render();
     }
-  }catch(e){console.warn('Rotten logic:',e);}
-}
 
-async function loadResources(){
-  const q=document.getElementById('search').value.toLowerCase().trim();
-  const {data,error}=await sb.from('resources').select('*').order('id',{ascending:true});
-  if(error){toast('Ошибка: '+error.message,'err');return;}
-  allResources=data??[];
-  renderStats(allResources);
-  if(currentTab==='dashboard'){renderDashboard();return;}
-  const filtered=allResources.filter(i=>{
-    const mc=currentTab==='all'||i.category===currentTab;
-    const mq=i.title.toLowerCase().includes(q);
-    return mc&&mq;
-  });
-  render(filtered);
-}
-
-/* ═══════════════════════════════════════════
-   STATS BAR
-═══════════════════════════════════════════ */
-function renderStats(data){
-  const total=data.reduce((s,i)=>s+(i.count||0),0);
-  const empty=data.filter(i=>(i.count||0)<=0).length;
-  const expire=data.filter(i=>EXPIRY[i.title]).length;
-  const stats=getStats();
-  const totalAdded=Object.values(stats).reduce((s,v)=>s+(v.added||0),0);
-  const totalRemoved=Object.values(stats).reduce((s,v)=>s+(v.removed||0),0);
-  document.getElementById('sbar').innerHTML=`
-    <div class="schip">Единиц: <b>${total}</b></div>
-    <div class="schip">Позиций: <b>${data.length}</b></div>
-    <div class="schip">Пусто: <b style="color:var(--r)">${empty}</b></div>
-    <div class="schip">Гниёт: <b style="color:var(--a)">${expire}</b></div>
-    <div class="schip">Сдали всего: <b style="color:var(--g)">+${totalAdded}</b></div>
-    <div class="schip">Взяли всего: <b style="color:var(--r)">−${totalRemoved}</b></div>
-  `;
-}
-
-/* ═══════════════════════════════════════════
-   RENDER CARDS
-═══════════════════════════════════════════ */
-function countClass(n){return n<=0?'zero':n<=2?'warn':'ok';}
-
-function render(items){
-  const grid=document.getElementById('grid');
-  document.getElementById('grid').style.display='';
-  document.getElementById('dashboard').style.display='none';
-  if(!items.length){grid.innerHTML='<div class="loading">Ничего не найдено</div>';return;}
-  grid.innerHTML=items.map(item=>{
-    const emoji=ITEM_EMOJI[item.title]||CAT_EMOJI[item.category]||'📦';
-    const expDays=EXPIRY[item.title];
-    const craftable_flag=isCraftable(item);
-    const recipe=getRecipe(item);
-    const recipeText=getRecipeText(recipe);
-    const ok=canCraft(recipe);
-    const img=item.image_url&&!item.image_url.startsWith('images/')
-      ?`<img src="${item.image_url}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`:'';
-    const cardClass=expDays?'expire':craftable_flag?'craft-item':'';
-    const badgeHtml=expDays
-      ?`<span class="badge a">⏳ ${expDays} дн.</span>`
-      :craftable_flag
-        ?`<span class="badge b">⚗ Крафт</span>`
-        :`<span class="badge g">✓ Ресурс</span>`;
-    // Craft / sub button area
-    let actionHtml='';
-    if(isAdmin){
-      if(craftable_flag){
-        actionHtml=`<button class="btn b" style="font-size:10px;padding:4px 9px"
-          onclick="handleAction(${item.id},'craft')" ${!ok?'disabled':''}>⚗ Крафт</button>`;
-      } else {
-        actionHtml=`<button class="btn r" style="font-size:10px;padding:4px 9px"
-          onclick="handleAction(${item.id},'sub')"
-          ${(item.count||0)<=0?'disabled':''}>−</button>`;
-      }
+    function toggleDebug() {
+        isDebug = !isDebug;
+        const btn = document.getElementById('debug-btn');
+        btn.innerText = `DEBUG: ${isDebug ? 'ON' : 'OFF'}`;
+        btn.classList.toggle('debug-active', isDebug);
     }
-    return `
-    <div class="card ${cardClass}">
-      <div class="ctop">
-        <div class="cicon">${img}<span ${img?'style="display:none"':''}>${emoji}</span></div>
-        <div class="cinfo">
-          <div class="ctitle">${item.title}</div>
-          ${badgeHtml}
-        </div>
-      </div>
-      ${recipeText?`
-      <div class="recipe-box">
-        <b>Рецепт:</b><br>${recipeText}
-        ${!ok&&isAdmin?'<div class="recipe-warn">⚠ Не хватает ресурсов</div>':''}
-      </div>`:''}
-      <div class="cbot">
-        <div class="count ${countClass(item.count||0)}">${item.count??0}</div>
-        <div class="acts">
-          ${isAdmin?`<button class="btn g" style="font-size:10px;padding:4px 9px"
-            onclick="handleAction(${item.id},'add')">+</button>`:''}
-          ${actionHtml}
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-}
 
-/* ═══════════════════════════════════════════
-   ACTIONS
-═══════════════════════════════════════════ */
-async function handleAction(itemId,mode){
-  if(!isAdmin) return;
-  const item=allResources.find(r=>r.id===itemId);
-  if(!item) return;
-
-  if(mode==='add'){
-    const {error}=await sb.rpc('update_resource_safe',{res_id:item.id,delta:1});
-    if(error){toast('Ошибка: '+error.message,'err');return;}
-    if(EXPIRY[item.title]) await sb.from('expiring_items').insert({resource_id:item.id});
-    addStat(itemId,'added');
-    toast(`✅ +1 ${item.title}`);
-
-  } else if(mode==='craft'){
-    const recipe=getRecipe(item);
-    if(!canCraft(recipe)){toast('⚠ Недостаточно ресурсов','err');return;}
-    for(const [id,qty] of Object.entries(recipe)){
-      await sb.rpc('update_resource_safe',{res_id:parseInt(id),delta:-qty});
+    function setView(v) {
+        curView = v;
+        document.querySelectorAll('.btn-ui').forEach(b => b.classList.toggle('active', b.onclick.toString().includes(v)));
+        render();
     }
-    await sb.rpc('update_resource_safe',{res_id:item.id,delta:1});
-    addStat(itemId,'crafted');
-    toast(`⚗️ Скрафчено: ${item.title}`,'info');
 
-  } else if(mode==='sub'){
-    if((item.count||0)<=0){toast('Нечего вычитать!','err');return;}
-    const {error}=await sb.rpc('update_resource_safe',{res_id:item.id,delta:-1});
-    if(error){toast('Ошибка: '+error.message,'err');return;}
-    addStat(itemId,'removed');
-    toast(`📤 −1 ${item.title}`,'info');
-  }
-  await loadResources();
-}
+    function render() {
+        const grid = document.getElementById('grid');
+        const dash = document.getElementById('dashboard');
+        const search = document.getElementById('search').value.toLowerCase();
 
-/* ═══════════════════════════════════════════
-   DASHBOARD
-═══════════════════════════════════════════ */
-function renderDashboard(){
-  document.getElementById('grid').style.display='none';
-  const db=document.getElementById('dashboard');
-  db.style.display='block';
-  if(!allResources.length){db.innerHTML='<div class="loading">Нет данных</div>';return;}
+        if (curView === 'dashboard') {
+            grid.style.display = 'none'; dash.style.display = 'block';
+            drawStats(); return;
+        }
 
-  const stats=getStats();
-  const total=allResources.reduce((s,i)=>s+(i.count||0),0);
-  const empty=allResources.filter(i=>(i.count||0)<=0).length;
-  const totalAdded=Object.entries(stats).reduce((s,[,v])=>s+(v.added||0),0);
-  const totalRemoved=Object.entries(stats).reduce((s,[,v])=>s+(v.removed||0),0);
-  const totalCrafted=Object.entries(stats).reduce((s,[,v])=>s+(v.crafted||0),0);
+        grid.style.display = 'grid'; dash.style.display = 'none';
+        const filt = items.filter(i => (curView==='all' || i.category===curView) && i.title.toLowerCase().includes(search));
 
-  // Category breakdown
-  const cats={shells:'🐚 Ракушки',feathers:'🪶 Перья',meds:'🌿 Травы',pets:'🐾 Питомцы'};
-  const catCounts={};
-  for(const [k] of Object.entries(cats)){
-    catCounts[k]={items:allResources.filter(r=>r.category===k).length,
-      units:allResources.filter(r=>r.category===k).reduce((s,r)=>s+(r.count||0),0)};
-  }
+        grid.innerHTML = filt.map(i => {
+            const rec = RECIPES[i.title];
+            const hasMats = rec ? Object.entries(rec).every(([n, q]) => (items.find(x=>x.title===n)?.count||0) >= q) : true;
+            const recStr = rec ? Object.entries(rec).map(([n,q]) => `${n} x${q}`).join(', ') : '';
 
-  // Bar chart — top 20 by count
-  const sorted=[...allResources].sort((a,b)=>(b.count||0)-(a.count||0)).slice(0,20);
-  const maxCount=sorted[0]?.count||1;
-  const barColors={'shells':'var(--a)','feathers':'var(--b)','meds':'var(--g)','pets':'var(--vi)'};
-
-  // Stats table — by movement (added+removed+crafted)
-  const withStats=allResources.map(r=>{
-    const s=stats[r.id]||{added:0,removed:0,crafted:0};
-    return {...r,_added:s.added||0,_removed:s.removed||0,_crafted:s.crafted||0,
-      _total:(s.added||0)+(s.removed||0)+(s.crafted||0)};
-  }).sort((a,b)=>b._total-a._total).filter(r=>r._total>0).slice(0,15);
-
-  db.innerHTML=`
-  <!-- SUMMARY -->
-  <div class="dsection">
-    <div class="dtitle">Общая сводка</div>
-    <div class="dsum">
-      <div class="dcard">
-        <div class="dlabel">Единиц на складе</div>
-        <div class="dval" style="color:var(--c)">${total}</div>
-        <div class="dsub">${allResources.length} позиций</div>
-      </div>
-      <div class="dcard">
-        <div class="dlabel">Пустых позиций</div>
-        <div class="dval" style="color:var(--r)">${empty}</div>
-        <div class="dsub">${((empty/allResources.length)*100).toFixed(0)}% от всего</div>
-      </div>
-      <div class="dcard">
-        <div class="dlabel">Сдали (сессия)</div>
-        <div class="dval" style="color:var(--g)">+${totalAdded}</div>
-        <div class="dsub">прибыль</div>
-      </div>
-      <div class="dcard">
-        <div class="dlabel">Взяли (сессия)</div>
-        <div class="dval" style="color:var(--r)">−${totalRemoved}</div>
-        <div class="dsub">убыль</div>
-      </div>
-      <div class="dcard">
-        <div class="dlabel">Скрафчено</div>
-        <div class="dval" style="color:var(--b)">${totalCrafted}</div>
-        <div class="dsub">итого крафтов</div>
-      </div>
-      <div class="dcard">
-        <div class="dlabel">Активность</div>
-        <div class="dval" style="color:var(--vi)">${totalAdded+totalRemoved+totalCrafted}</div>
-        <div class="dsub">всего действий</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- CATEGORIES -->
-  <div class="dsection">
-    <div class="dtitle">По категориям</div>
-    <div class="catrow">
-      ${Object.entries(cats).map(([k,label])=>`
-        <div class="catcard">
-          <div class="catlabel">${label}</div>
-          <div class="catval" style="color:${barColors[k]||'var(--c)'}">${catCounts[k].units}</div>
-          <div class="catsub">${catCounts[k].items} позиций</div>
-        </div>`).join('')}
-    </div>
-  </div>
-
-  <!-- STOCK CHART -->
-  <div class="dsection">
-    <div class="dtitle">Запасы (топ позиций)</div>
-    <div class="bchart">
-      ${sorted.map(r=>`
-        <div class="brow">
-          <div class="bname" title="${r.title}">${ITEM_EMOJI[r.title]||''} ${r.title}</div>
-          <div class="btrack">
-            <div class="bfill" style="width:${Math.max(4,((r.count||0)/maxCount)*100)}%;
-              background:${barColors[r.category]||'var(--c)'};opacity:.7"></div>
-          </div>
-          <div class="bval">${r.count??0}</div>
-        </div>`).join('')}
-    </div>
-  </div>
-
-  <!-- MOVEMENT STATS -->
-  <div class="dsection">
-    <div class="dtitle">Статистика движения предметов</div>
-    ${withStats.length?`
-    <table class="stable">
-      <thead>
-        <tr>
-          <th>Предмет</th>
-          <th>На складе</th>
-          <th>Прибыло</th>
-          <th>Убыло</th>
-          <th>Скрафтов.</th>
-          <th>Популярность</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${withStats.map(r=>`
-          <tr>
-            <td>${ITEM_EMOJI[r.title]||''} ${r.title}</td>
-            <td class="${r.count<=0?'tr':r.count<=2?'ta':'tg'}">${r.count??0}</td>
-            <td class="tg">+${r._added}</td>
-            <td class="tr">−${r._removed}</td>
-            <td class="tb">${r._crafted}</td>
-            <td>
-              <div style="display:flex;align-items:center;gap:6px">
-                <div style="flex:1;background:var(--s2);border-radius:3px;height:6px;overflow:hidden">
-                  <div style="height:100%;border-radius:3px;background:var(--vi);
-                    width:${Math.min(100,Math.round((r._total/Math.max(1,...withStats.map(x=>x._total)))*100))}%"></div>
+            return `
+                <div class="card">
+                    <div class="item-info">
+                        <div class="icon">${getEmoji(i.category)}</div>
+                        <div class="title">${i.title}</div>
+                    </div>
+                    <div class="craft-text">${rec ? '<b>Нужно:</b> '+recStr : ''}</div>
+                    <div class="controls">
+                        <button class="qty-btn" onclick="update(${i.id}, -1)">−</button>
+                        <div class="count" style="color:${i.count<3?'#EF4444':'#FFF'}">${i.count}</div>
+                        <button class="qty-btn" onclick="update(${i.id}, 1)">+</button>
+                    </div>
+                    ${rec ? `<button class="btn-build" ${!hasMats?'disabled':''} onclick="craft('${i.title}')">Крафт</button>` : ''}
                 </div>
-                <span style="font-size:9px;color:var(--mu)">${r._total}</span>
-              </div>
-            </td>
-          </tr>`).join('')}
-      </tbody>
-    </table>`
-    :'<div style="color:var(--mu);font-size:11px;font-family:\'Space Mono\',monospace;padding:16px 0">Нет данных — начните добавлять и брать предметы</div>'}
-  </div>
+            `;
+        }).join('');
+    }
 
-  <!-- ALL ITEMS (no buttons) -->
-  <div class="dsection">
-    <div class="dtitle">Все позиции — полный список</div>
-    <table class="stable">
-      <thead>
-        <tr><th>Предмет</th><th>Категория</th><th>Кол-во</th><th>Тип</th><th>Гниение</th></tr>
-      </thead>
-      <tbody>
-        ${[...allResources].sort((a,b)=>(b.count||0)-(a.count||0)).map(r=>`
-          <tr>
-            <td>${ITEM_EMOJI[r.title]||''} ${r.title}</td>
-            <td style="color:var(--mu)">${cats[r.category]||r.category||'—'}</td>
-            <td class="${(r.count||0)<=0?'tr':(r.count||0)<=2?'ta':'tg'}">${r.count??0}</td>
-            <td style="color:var(--mu)">${isCraftable(r)?'⚗ Крафт':'Ресурс'}</td>
-            <td>${EXPIRY[r.title]?`<span style="color:var(--a)">${EXPIRY[r.title]} дн.</span>`:'—'}</td>
-          </tr>`).join('')}
-      </tbody>
-    </table>
-  </div>
-  `;
-}
+    async function update(id, delta) {
+        const item = items.find(i => i.id === id);
+        if (item.count + delta < 0) return;
 
-/* ═══════════════════════════════════════════
-   REALTIME
-═══════════════════════════════════════════ */
-function subscribeRealtime(){
-  sb.channel('res-ch')
-    .on('postgres_changes',{event:'*',schema:'public',table:'resources'},()=>loadResources())
-    .subscribe();
-}
+        const { error } = await sb.from('resources').update({ count: item.count + delta }).eq('id', id);
+        if (!error) {
+            if (!isDebug) {
+                if (delta > 0) history.in++; else history.out++;
+                history.pop[item.title] = (history.pop[item.title] || 0) + 1;
+            }
+            sync();
+        }
+    }
 
-/* ═══════════════════════════════════════════
-   NAV & ROLE
-═══════════════════════════════════════════ */
-function setTab(tab){
-  currentTab=tab;
-  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.cat===tab));
-  if(tab==='dashboard'){
-    document.getElementById('grid').style.display='none';
-    renderDashboard();
-  } else {
-    document.getElementById('dashboard').style.display='none';
-    document.getElementById('grid').style.display='';
-    loadResources();
-  }
-}
+    async function craft(title) {
+        const rec = RECIPES[title];
+        for (const [name, qty] of Object.entries(rec)) {
+            const ing = items.find(x => x.title === name);
+            await sb.from('resources').update({ count: ing.count - qty }).eq('id', ing.id);
+        }
+        const target = items.find(x => x.title === title);
+        await sb.from('resources').update({ count: target.count + 1 }).eq('id', target.id);
+        if (!isDebug) history.in++;
+        toast(`Готово: ${title}`);
+        sync();
+    }
 
-function toggleRole(){
-  isAdmin=!isAdmin;
-  const el=document.getElementById('role-text');
-  el.textContent=isAdmin?'Админ':'Зритель';
-  el.style.color=isAdmin?'var(--g)':'var(--mu)';
-  toast(isAdmin?'🔑 Режим администратора':'👁 Режим просмотра','info');
-  loadResources();
-}
+    function drawStats() {
+        document.getElementById('st-total').innerText = items.reduce((a,b) => a + b.count, 0);
+        document.getElementById('st-in').innerText = history.in;
+        document.getElementById('st-out').innerText = history.out;
+        
+        const low = items.filter(i => i.count < 3).sort((a,b)=>a.count-b.count).slice(0,5);
+        document.getElementById('st-low').innerHTML = low.map(i => `<div style="padding:4px 0; border-bottom:1px solid var(--border)">${i.title} <b style="color:var(--red); float:right">${i.count}</b></div>`).join('');
+        
+        const popular = Object.entries(history.pop).sort((a,b)=>b[1]-a[1]).slice(0,5);
+        document.getElementById('st-pop').innerHTML = popular.map(p => `<div style="padding:4px 0; border-bottom:1px solid var(--border)">${p[0]} <b style="color:var(--accent); float:right">${p[1]}</b></div>`).join('');
+    }
 
-init();
+    function getEmoji(c) { return {'shells':'🐚','feathers':'🪶','meds':'🌿','pets':'🐾'}[c] || '📦'; }
+    function toast(m) {
+        const t = document.createElement('div'); t.className = 'toast'; t.innerText = m;
+        document.getElementById('toasts').appendChild(t);
+        setTimeout(() => t.remove(), 2500);
+    }
+
+    sync();
+    sb.channel('db').on('postgres_changes',{event:'*',schema:'public',table:'resources'},sync).subscribe();
 </script>
 </body>
 </html>
