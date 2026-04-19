@@ -47,9 +47,10 @@
     </div>
 
 <script>
-    const SB_URL = 'https://bghppzchqmxpdnhpzirv.supabase.co';
-    const SB_KEY = 'sb_publishable_HrLoyv6M03rTAQo4s3srWA_rPSt0xDy';
-    const supabaseClient = supabase.createClient(SB_URL, SB_KEY);
+    // Убедитесь, что внутри кавычек нет пробелов в начале или конце!
+const SB_URL = 'https://bghppzchqmxpdnhpzirv.supabase.co';
+const SB_KEY = 'sb_publishable_HrLoyv6M03rTAQo4s3srWA_rPSt0xDy';
+const supabaseClient = supabase.createClient(SB_URL, SB_KEY);
 
     let currentCategory = 'all';
     let isAdmin = true;
